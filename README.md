@@ -16,7 +16,7 @@
 
 - 136 行 `def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit: bool = False, download_root: str = None):`
 
-- 这里 `self.base_model` 对应参数 `name` ，似乎用于决定选用的 `state_dict` ，但是 `name in _MODELS` 似乎只是视觉，没看到文本参数哪里来的
+- 这里 `self.base_model` 对应参数 `name` ，似乎用于决定选用的 `state_dict` ，`name in _MODELS` 里面（如 "ViT-L/14"）都是预训练 CLIP 模型，但是还没有长文本能力
 
 - 228 行 `model = build_model(state_dict or model.state_dict(), load_from_clip = True).to(device)`
 
