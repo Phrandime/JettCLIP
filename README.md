@@ -8,7 +8,7 @@
 
 - 261 行 `trainset = share4v_train_dataset()` 加载数据集，数据集同时包含 `(images, texts, short_text)`
 
-- `train_epoch` 中 `loss_long,loss_short = self.model(images, texts,short_text,self.rank)` ， `loss=loss_long+loss_short` ，没有使用 ``
+- `train_epoch` 中 `loss_long,loss_short = self.model(images, texts,short_text,self.rank)` ， `loss=loss_long+loss_short` ，没有使用 OpenCLIP 给的模块
 
 - 36 行 `self.model, _ = longclip.load_from_clip(self.base_model, device='cpu',download_root=args.download_root)` 然后再对 `model` 进行一些处理
 
