@@ -9,9 +9,9 @@ import os
 import numpy as np
 import random
 
-data4v_root = '../sharegpt4v/data/'  # 'sharegpt4v/data/'
-json_name = 'share-captioner_coco_lcs_sam_1246k_1107.json'
-image_root = '../sharegpt4v/data/'  # 'sharegpt4v/data/'
+data4v_root = '../../Long-CLIP/ShareGPT4V/data/'  # 'sharegpt4v/data/'
+json_name = 'share-captioner_coco_lcs_676k_1107.json'
+image_root = '../../Long-CLIP/ShareGPT4V/data/'  # 'sharegpt4v/data/'
 
 class share4v_val_dataset(data.Dataset):
     def __init__(self):
@@ -39,9 +39,9 @@ class share4v_train_dataset(data.Dataset):
         self.data4v_root = data4v_root
         self.json_name = json_name
         self.image_root = image_root
-        self.total_len = 570486
-        with open(data4v_root + json_name, 'r',encoding='utf8')as fp:
-            self.json_data = json.load(fp)[self.total_len: self.total_len + 10]
+        self.total_len = 1000
+        with open(data4v_root + json_name, 'r', encoding='utf8') as fp:
+            self.json_data = json.load(fp)[self.total_len: self.total_len + 6]
         _ , self.preprocess = clip.load("ViT-L/14")
 
     def __len__(self):

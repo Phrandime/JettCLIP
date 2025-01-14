@@ -52,164 +52,83 @@ class CLIP_Clean_Train():
         self.writer = SummaryWriter(self.logdir)
 
         
-        self.model = self.model.cuda()
-        # self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
+
+        self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
            
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.scaler =GradScaler()
 
-    # move PCA to CLIP class
-    # def PCA(self, input_tensor, PCA_dim):
-    #     mean = torch.mean(input_tensor, dim=0)
-    #     X_centered = input_tensor - mean.unsqueeze(0)
-    #     X_centered = X_centered.float()
-    #     cov_matrix = torch.mm(X_centered.T, X_centered)
-    #     eigenvalues, eigenvectors = torch.linalg.eig(cov_matrix)
-    #     eigenvalues = eigenvalues.float()
-    #     eigenvectors = eigenvectors.float()    
-    #     sorted_indices = torch.argsort(eigenvalues, descending=True)
-    #     eigenvectors = eigenvectors[:, sorted_indices]
-    #     principal_components = eigenvectors[:, :PCA_dim]
-    #     X_transformed = torch.mm(X_centered, principal_components)
-    #     X_reversed = torch.mm(X_transformed, principal_components.T)
-    #     X_reversed += mean
-    #     return X_reversed
-
-    #rewrite forward in CLIP class to take place inference function, such that DDP will be effective
-    # def inference(self, images, texts):
-    #     image_features = self.model.module.encode_image(images)
-    #     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-    #     text_features = self.model.module.encode_text(texts)
-    #     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-        
-    #     image_feat_all = concat_all_gather(image_features)
-    #     text_feat_all = concat_all_gather(text_features)
-        
-    #     sim_i2t = torch.matmul(image_features, text_feat_all.T)
-    
-    #     sim_t2i = torch.matmul(image_feat_all, text_features.T)
-    #     sim_t2i = sim_t2i.T
-        
-    #     sim_i2t = self.model.logit_scale.exp() * sim_i2t
-    #     sim_t2i = self.model.logit_scale.exp() * sim_t2i
-
-    #     if is_dist_avail_and_initialized():
-    #         rank = dist.get_rank()
-    #     else:
-    #         rank = 0
-    #     bs = images.size(0)
-    #     targets = torch.linspace(rank * bs, rank * bs + bs - 1, bs, dtype=int).to(
-    #         images.device
-    #     )
-        
-    #     loss_itc = (
-    #             F.cross_entropy(sim_i2t, targets, label_smoothing=0.1)
-    #             + F.cross_entropy(sim_t2i, targets, label_smoothing=0.1)
-    #         ) / 2
-    #     return loss_itc
-
-
-    # def inference_short(self, images, texts):
-    #     image_features = self.model.module.encode_image(images)
-    #     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-    #     image_features = self.PCA(image_features, 32)
-
-    #     text_features = self.model.module.encode_text(texts)
-    #     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-        
-    #     image_feat_all = concat_all_gather(image_features)
-    #     text_feat_all = concat_all_gather(text_features)
-
-    #     sim_i2t = torch.matmul(image_features, text_feat_all.T)
-    #     sim_t2i = torch.matmul(image_feat_all, text_features.T)
-    #     sim_t2i = sim_t2i.T
-        
-    #     sim_i2t = self.model.logit_scale.exp() * sim_i2t
-    #     sim_t2i = self.model.logit_scale.exp() * sim_t2i
-
-    #     if is_dist_avail_and_initialized():
-    #         rank = dist.get_rank()
-    #     else:
-    #         rank = 0
-    #     bs = images.size(0)
-    #     targets = torch.linspace(rank * bs, rank * bs + bs - 1, bs, dtype=int).to(
-    #         images.device
-    #     )
-        
-    #     loss_itc = (
-    #             F.cross_entropy(sim_i2t, targets, label_smoothing=0.1)
-    #             + F.cross_entropy(sim_t2i, targets, label_smoothing=0.1)
-    #         ) / 2
-    #     return loss_itc
 
     def train_epoch(self, dataloader, epoch, start_iter=0):
-        running_loss = 0.0
-        running_loss_short = 0.0
-        #rank = torch.distributed.get_rank() 
+        # running_loss_long = 0.0
+        # running_loss_short = 0.0
         num_batches_per_epoch = len(dataloader)
-        for i, (images, texts, short_text) in enumerate(tqdm(dataloader, disable=(self.rank != 0))):
+
+        for i, (images, texts, short_texts) in enumerate(tqdm(dataloader, disable=(self.rank != 0))):
             step = num_batches_per_epoch * epoch + i
             if step < start_iter:
                 continue
+
+            # 将数据移动到 GPU
             images = images.cuda()
-            #images_short = images.clone()
             texts = longclip.tokenize(texts, truncate=True).cuda()
-            short_text = longclip.tokenize(short_text, truncate=True).cuda()
+            short_texts = longclip.tokenize(short_texts, truncate=True).cuda()
+
+            # 学习率调整和优化器初始化
             self.scheduler(step)
             self.optimizer.zero_grad()
+
             with torch.cuda.amp.autocast():
-                loss_long,loss_short = self.model(images, texts,short_text,self.rank)
-            # try:
-            #     loss_short = 0.1 * self.inference_short(images_short, short_text)
-            #     loss.backward()
-            #     loss_short.backward()
-                
-            # except:
-            #     # SVD may encounter infs, very rare occasion.
-            #     loss.backward()
-                loss=loss_long+loss_short
+                # 获取模型返回的特征
+                features = self.model(images, texts, short_texts)
+
+                # 提取特征
+                image_features_long = features["image_features_long"]
+                text_features_long = features["text_features_long"]
+                image_features_short = features["image_features_short"]
+                text_features_short = features["text_features_short"]
+
+                # 分布式收集全局特征
+                image_feat_all_long = torch.cat(torch.distributed.nn.all_gather(image_features_long), dim=0)
+                text_feat_all_long = torch.cat(torch.distributed.nn.all_gather(text_features_long), dim=0)
+                image_feat_all_short = torch.cat(torch.distributed.nn.all_gather(image_features_short), dim=0)
+                text_feat_all_short = torch.cat(torch.distributed.nn.all_gather(text_features_short), dim=0)
+
+                # 计算相似度
+                sim_i2tl = torch.matmul(image_features_long, text_feat_all_long.T)
+                sim_tl2i = torch.matmul(image_feat_all_long, text_features_long.T).T
+                sim_i2ts = torch.matmul(image_features_short, text_feat_all_short.T)
+                sim_ts2i = torch.matmul(image_feat_all_short, text_features_short.T).T
+
+                # 对相似度进行缩放
+                logit_scale = self.model.module.logit_scale.exp()
+                sim_i2tl *= logit_scale
+                sim_tl2i *= logit_scale
+                sim_i2ts *= logit_scale
+                sim_ts2i *= logit_scale
+
+                # 计算目标
+                bs = images.size(0)
+                targets = torch.linspace(self.rank * bs, self.rank * bs + bs - 1, bs, dtype=torch.long).to(images.device)
+
+                # 计算损失
+                loss_long = (F.cross_entropy(sim_i2tl, targets, label_smoothing=0.1)
+                            + F.cross_entropy(sim_tl2i, targets, label_smoothing=0.1)) / 2
+                loss_short = (F.cross_entropy(sim_i2ts, targets, label_smoothing=0.1)
+                            + F.cross_entropy(sim_ts2i, targets, label_smoothing=0.1)) / 2
+                loss = loss_long + loss_short
+
+            # 梯度反向传播和优化器更新
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
         
-        # ToDo: revise the report part
-        #     running_loss += loss.item()
+        #     # 更新损失
+        #     running_loss_long += loss_long.item()
         #     running_loss_short += loss_short.item()
-        #     batch_num = i
-            
-        #     loss = running_loss
-        #     running_loss = 0.0
-
-        #     loss_short = running_loss_short
-        #     running_loss_short = 0.0
-
-        #     loss = torch.tensor(loss).cuda()
-        #     dist.all_reduce(loss)
-        #     loss = loss.item() / torch.distributed.get_world_size()
-
-        #     loss_short = torch.tensor(loss_short).cuda()
-        #     dist.all_reduce(loss_short)
-        #     loss_short = loss_short.item() / torch.distributed.get_world_size()
-
-        #     rank = torch.distributed.get_rank()
-        #     if step % 100 == 0:
-        #         if rank == 0:
-        #             self.writer.add_scalar("hyper/lr", self.optimizer.param_groups[0]['lr'], step)
-        #             self.writer.add_scalar("logit_scale/train", self.model.logit_scale.item(), step)
-        #             print("=====================================")
-        #             print(f"train lr step {step}: {self.optimizer.param_groups[0]['lr']}")
-        #             print(f"train logit_scale step {step}: {self.model.logit_scale.item()}")
-        #             print(f"train loss step {step}: {loss}")
-        #             print(f"train loss short step {step}: {loss_short}")
-        #             print("=====================================")
-        #             self.writer.add_scalar("Loss/train", loss + loss_short, step)
-                    
-        #             with torch.no_grad():
-        #                 self.model.eval()
-        #                 self.test(epoch = epoch)
-        #                 self.model.train()
-
-        # return running_loss / batch_num
+        # 
+        # return running_loss_long / num_batches_per_epoch, running_loss_short / num_batches_per_epoch
+        
 
     @torch.no_grad()
     def test_epoch(self, dataloader):
@@ -259,9 +178,7 @@ class CLIP_Clean_Train():
     
     def train(self, resume=False, warmup_length=200):
         trainset = share4v_train_dataset()
-        # train_sampler = DistributedSampler(dataset=trainset, shuffle=True)
-        train_sampler = torch.utils.data.RandomSampler(trainset)  # 使用随机采样器
-
+        train_sampler = DistributedSampler(dataset=trainset, shuffle=True)
         train_loader = torch.utils.data.DataLoader(trainset, batch_size=self.batch_size, sampler=train_sampler, num_workers=32, pin_memory=True)
 
         self.scheduler = cosine_lr(self.optimizer, base_lr=self.lr, warmup_length=warmup_length, steps=self.num_epoch * len(train_loader))
@@ -276,29 +193,22 @@ class CLIP_Clean_Train():
                 now = datetime.now()
                 formatted_date = now.strftime("%m-%d--%H_%M_%S_")
                 #torch.distributed.barrier()
-                # torch.save(self.model.module.state_dict(), './checkpoints/'+str(self.rank)+formatted_date+name)
-                torch.save(self.model.state_dict(), '../checkpoints/'+str(self.rank)+formatted_date+name)
+                torch.save(self.model.module.state_dict(), '../checkpoints/'+str(self.rank)+formatted_date+name)
             # print("=====================================")
             # print(f"loss after training epoch: {epoch}")
             # print("=====================================")
 
-            # if epoch == self.num_epoch - 1:
-            #     if self.base_model == "ViT-B/16":
-            #         name = 'longclip-B.pt'
-            #     elif self.base_model == "ViT-L/14":
-            #         name = 'longclip-L.pt'
-            #     else:
-            #         name = "longclip-others.pt"
 
-            #     torch.save(self.model.module.state_dict(), name)
-
-'''
 def setup_distributed(backend="nccl", port=None):
     """Initialize distributed training environment.
     support both slurm and torch.distributed.launch
     see torch.distributed.init_process_group() for more details
     """
     num_gpus = torch.cuda.device_count()
+
+    def _set_os_environment(key, val):
+        if key not in os.environ:
+            os.environ[key] = val
 
     if "SLURM_JOB_ID" in os.environ:
         rank = int(os.environ["SLURM_PROCID"])
@@ -316,6 +226,11 @@ def setup_distributed(backend="nccl", port=None):
         os.environ["LOCAL_RANK"] = str(rank % num_gpus)
         os.environ["RANK"] = str(rank)
     else:
+        _set_os_environment("RANK", "0")
+        _set_os_environment("WORLD_SIZE", "1")
+        _set_os_environment("MASTER_ADDR", "localhost")
+        _set_os_environment("MASTER_PORT", "29522")
+
         rank = int(os.environ["RANK"])
         world_size = int(os.environ["WORLD_SIZE"])
 
@@ -328,25 +243,7 @@ def setup_distributed(backend="nccl", port=None):
     )
     torch.cuda.set_device(device=f'cuda:{rank % num_gpus}')
     return rank, rank % num_gpus
-'''
 
-def setup_distributed(backend="nccl", port=None):
-    """Initialize distributed training environment.
-    Only for single-GPU training, skip distributed logic.
-    """
-    num_gpus = torch.cuda.device_count()
-
-    # 单机单卡训练，不需要分布式设置
-    if num_gpus > 0:
-        rank = 0  # 只有一个进程
-        world_size = 1  # 只有一个进程
-        # 设置CUDA设备
-        torch.cuda.set_device(0)
-    else:
-        raise ValueError("No GPUs found")
-
-    # 如果不需要分布式训练，跳过 dist.init_process_group 的调用
-    return rank, 0
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='params')
@@ -357,7 +254,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_length", default=200, type=int, help="warmup_length.")
     parser.add_argument("--base_model", default="ViT-L/14", help="CLIP Base Model")
     parser.add_argument(
-        "--batch-size", type=int, default=2, help="Batch size per gpu."#112  # 128
+        "--batch-size", type=int, default=2, help="Batch size per gpu."#112
     )
     parser.add_argument(
         "--epochs", type=int, default=2, help="Number of epochs to train for."
@@ -370,7 +267,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--download-root", default=None, help="CLIP Base Model download root")
     args = parser.parse_args()
-    rank,local_rank = setup_distributed()
+    rank, local_rank = setup_distributed()
     print("DDP Done")
 
     trainer = CLIP_Clean_Train(
