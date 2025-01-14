@@ -439,7 +439,7 @@ class CLIP(nn.Module):
     #     return logits_per_image, logits_per_text
 
     #rewrite forward, fix the bug of no gradient in the original concat_all_gather. Notice that torch.distributed.nn.all_gather has backward function
-    def forward(self, image, text_long,text_short,rank):
+    def forward(self, image, text_long, text_short):
         image_features_long = self.encode_image(image)
         text_features_long = self.encode_text(text_long)
         text_features_short = self.encode_text(text_short)
@@ -450,7 +450,14 @@ class CLIP(nn.Module):
         text_features_short = text_features_short / text_features_short.norm(dim=1, keepdim=True)
         image_features_short = self.PCA(image_features_long, 32)
             
-        '''
+        # 直接返回特征，不计算损失
+        return {
+            "image_features_long": image_features_long,
+            "text_features_long": text_features_long,
+            "image_features_short": image_features_short,
+            "text_features_short": text_features_short
+        }
+    
         image_feat_all_long = torch.cat(torch.distributed.nn.all_gather(image_features_long), dim=0)#gather with grad
         image_features_all_short = torch.cat(torch.distributed.nn.all_gather(image_features_short), dim=0)
         text_feat_all_long = torch.cat(torch.distributed.nn.all_gather(text_features_long), dim=0)
@@ -461,7 +468,7 @@ class CLIP(nn.Module):
         image_features_all_short = image_features_short
         text_feat_all_long = text_features_long
         text_feat_all_short = text_features_short
-
+        '''
         
         sim_i2tl = torch.matmul(image_features_long, text_feat_all_long.T)
         sim_tl2i = torch.matmul(image_feat_all_long, text_features_long.T)
