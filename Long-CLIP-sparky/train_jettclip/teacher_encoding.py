@@ -23,6 +23,9 @@ assert torch.cuda.is_available()
 def pre_featurize():
     model, preprocess = longclip.load(model_ckpt, device='cuda')
 
+    # model, preprocess = longclip.load(model_ckpt, device='cpu')
+    # model.cuda()
+
     with open(data4v_root + json_name, 'r', encoding='utf8') as fp:
         json_data = json.load(fp)
     
@@ -41,6 +44,10 @@ def pre_featurize():
 
         with torch.no_grad():
             feature = model(image_tensor, text, short_text)  # a dict
+        
+        for key, val in feature.items():
+            print(key, val.dtype)
+        raise
 
         feature = {key: value.cpu() for key, value in feature.items()}
         features.append(feature)
