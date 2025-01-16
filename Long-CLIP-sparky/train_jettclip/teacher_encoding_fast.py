@@ -16,14 +16,14 @@ data4v_root = '../../Long-CLIP/ShareGPT4V/data/'  # 'sharegpt4v/data/'
 json_name = 'share-captioner_coco_lcs_676k_1107.json'
 image_root = '../../Long-CLIP/ShareGPT4V/data/'  # 'sharegpt4v/data/'
 
-model_ckpt = '../checkpoints/longclip-B.pt'
+model_ckpt = '../checkpoints/longclip-L.pt'
 assert torch.cuda.is_available()
 
 # Custom Dataset
 class ImageTextDataset(data.Dataset):
     def __init__(self, json_path, image_root):
         with open(json_path, 'r', encoding='utf8') as fp:
-            self.json_data = json.load(fp)[:400]
+            self.json_data = json.load(fp)
         self.image_root = image_root
 
     def __len__(self):
@@ -62,7 +62,7 @@ def pre_featurize():
     dataset = ImageTextDataset(os.path.join(data4v_root, json_name), image_root)
     dataloader = data.DataLoader(
         dataset, 
-        batch_size=16, 
+        batch_size=64, 
         shuffle=False, 
         num_workers=min(cpu_count(), 8), 
         pin_memory=True,
@@ -82,8 +82,8 @@ def pre_featurize():
             })
             features.append(item['feature'])
 
-    json_output = os.path.join(data4v_root, 'captions_400.json')
-    features_output = os.path.join(data4v_root, 'features_400.pkl')
+    json_output = os.path.join(data4v_root, 'captions_L.json')
+    features_output = os.path.join(data4v_root, 'features_L.pkl')
 
     with open(json_output, 'w') as fp:
         json.dump(json_new, fp, separators=(',', ':'))
