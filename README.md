@@ -188,3 +188,7 @@ Distill-loss 可以尝试 MSE-loss ，如果担心实验失败、时间不够，
 `image_encoder` 和 `text_encoder` 基于 MobileCLIP 进行修改，`image_encoder` 最多改些输入大小之类的参数（还没细看），`text_encoder` 参考前文。`CLIP` 模型需要搬运 LongCLIP ，把 LongCLIP 的 CLIP 中的图像、文本编码器换了就行。此外建议将 LongCLIP 的 CLIP 在 `model/model_longclip.py` 的 457 行处截断，直接返回四个特征，后面 `loss` 的计算挪到外面（因为还要计算 Distill-loss）。
 
 暂时写到这里，大致思路应该清晰了，细节还可以补充，比如 `text_encoder` 的具体修改方式，数据集分 train 和 validate 的方法之类的。
+
+## Diary
+
+2025.1.15 选择基于 LongCLIP 修改代码，已经完成知识蒸馏的代码，并基本验证无误。
