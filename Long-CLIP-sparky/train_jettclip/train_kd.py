@@ -41,6 +41,7 @@ class CLIP_Clean_Train():
         self.model, _ = longclip.load_from_clip(self.base_model, device='cpu',download_root=args.download_root)
         # import ipdb;ipdb.set_trace()
         print("Model load success...")
+        # torch.save(self.model.state_dict(),"./checkpoints/test.pt")
         # self.model, _ = longclip.load('../checkpoints/longclip-B.pt', device='cpu')  # load teacher model for checking
         self.model.train()
         self.model.logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale)  
@@ -177,7 +178,9 @@ class CLIP_Clean_Train():
             self.writer.add_scalar("Loss/distill_loss_long", distill_loss_long.item(), step)
             self.writer.add_scalar("Loss/distill_loss_short", distill_loss_short.item(), step)
             self.writer.add_scalar("LogitScale/student", self.model.module.logit_scale.item(), step)
-            
+            # torch.save(self.model.module.state_dict(),"../checkpoints/test.pt")
+            if i%1000 == 0:
+                torch.save(self.model.module.state_dict(),"./checkpoints/current_train_s0.pt")
 
         #     # 更新损失
         #     running_loss_long += loss_long.item()
@@ -205,7 +208,7 @@ class CLIP_Clean_Train():
                 now = datetime.now()
                 formatted_date = now.strftime("%m-%d--%H_%M_%S_")
                 #torch.distributed.barrier()
-                torch.save(self.model.module.state_dict(), '../checkpoints/'+str(self.rank)+formatted_date+name)
+                torch.save(self.model.module.state_dict(), './checkpoints/'+str(self.rank)+formatted_date+name)
             # print("=====================================")
             # print(f"loss after training epoch: {epoch}")
             # print("=====================================")

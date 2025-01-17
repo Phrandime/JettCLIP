@@ -543,10 +543,10 @@ class CLIP_ml(nn.Module):
         self.logit_scale = nn.Parameter(torch.ones([]) * math.log(1.0 / 0.07))
         # self.positional_embedding = nn.Parameter(torch.empty(77, 512))
         # self.positional_embedding_res = nn.Parameter(torch.empty(77, 512))
-        self.mask1 = torch.zeros([248, 1])
-        self.mask1[:20, :] = 1
-        self.mask2 = torch.zeros([248, 1])
-        self.mask2[20:, :] = 1
+        # self.mask1 = torch.zeros([248, 1])
+        # self.mask1[:20, :] = 1
+        # self.mask2 = torch.zeros([248, 1])
+        # self.mask2[20:, :] = 1
 
     def _exponentiate_and_clip_logits(self, max_scale: float = 100.0):
         scale = self.logit_scale.exp()
@@ -676,10 +676,12 @@ def build_model(state_dict: dict, load_from_clip: bool):
             pretrained_state_dict_wo = {k: v for k, v in pretrained_state_dict.items() if k != 'text_encoder.positional_embedding.pos_embed.pos_embed'}
             # pretrained_state_dict_wo['positional_embedding'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
             # pretrained_state_dict_wo['positional_embedding_res'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
-
-            pretrained_state_dict_wo['text_encoder.positional_embedding'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
-            pretrained_state_dict_wo['text_encoder.positional_embedding_res'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
-
+            if "text_encoder.positional_embedding.pos_embed.pos_embed" in state_dict:
+                pretrained_state_dict_wo['text_encoder.positional_embedding'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
+                pretrained_state_dict_wo['text_encoder.positional_embedding_res'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
+            else:             
+                model.text_encoder.positional_embedding = nn.Parameter(torch.empty(pretrained_state_dict_wo['text_encoder.positional_embedding'].shape))
+                model.text_encoder.positional_embedding_res = nn.Parameter(torch.empty(pretrained_state_dict_wo['text_encoder.positional_embedding'].shape))
             model.load_state_dict(pretrained_state_dict_wo)
             # import ipdb;ipdb.set_trace()
             # model.load_state_dict(state_dict)
