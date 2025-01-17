@@ -28,6 +28,9 @@ from torch.cuda.amp import GradScaler
 # import warnings
 # warnings.filterwarnings("ignore")
 from datetime import datetime
+from multiprocessing import cpu_count
+
+import mobileclip
 
 
 class CLIP_Clean_Train():
@@ -38,11 +41,15 @@ class CLIP_Clean_Train():
         self.base_model = args.base_model
 
         # TODO: load JettCLIP model after implementing it.
-        self.model, _ = longclip.load_from_clip(self.base_model, device='cpu',download_root=args.download_root)
-        # self.model, _ = longclip.load('../checkpoints/longclip-B.pt', device='cpu')  # load teacher model for checking
+        # self.model, _ = longclip.load_from_clip(self.base_model, device='cpu',download_root=args.download_root)
+        self.model, _ = longclip.load('../checkpoints/longclip-B.pt', device='cpu')  # load teacher model for checking
+        # self.model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='../checkpoints/mobileclip_s0.pt')
         self.model.train()
         self.model.logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale)  
         self.model = self.model.cuda()
+
+        self.tokenizer = longclip.tokenize
+        # self.tokenizer = mobileclip.get_tokenizer('mobileclip_s0')
         
         self.batch_size = args.batch_size
         self.num_epoch = args.epochs
@@ -85,11 +92,13 @@ class CLIP_Clean_Train():
             step = num_batches_per_epoch * epoch + i
             if step < start_iter:
                 continue
+            if step % 16 == 0:
+                torch.cuda.empty_cache()
 
             # 将数据移动到 GPU
             images = images.cuda()
-            texts = longclip.tokenize(texts, truncate=True).cuda()
-            short_texts = longclip.tokenize(short_texts, truncate=True).cuda()
+            texts = self.tokenizer(texts, truncate=True).cuda()
+            short_texts = self.tokenizer(short_texts, truncate=True).cuda()
             teacher_features = {key: value.squeeze(1).cuda() for key, value in teacher_features.items()}
 
             # 学习率调整和优化器初始化
@@ -133,27 +142,27 @@ class CLIP_Clean_Train():
                 '''
 
                 # 调用 DistillClipLoss 计算损失
-                loss_long, distill_loss_long = self.distill_loss(
+                loss_long, distill_loss_long, i2t_correct_long, t2i_correct_long = self.distill_loss(
                     image_features=image_features_long,
                     text_features=text_features_long,
                     logit_scale=self.model.module.logit_scale.exp(),  # 学生的缩放因子
                     dist_image_features=teacher_image_features_long,
                     dist_text_features=teacher_text_features_long,
-                    dist_logit_scale=self.dist_logit_scale  # 教师的缩放因子
                 )
 
-                loss_short, distill_loss_short = self.distill_loss(
+                loss_short, distill_loss_short, i2t_correct_short, t2i_correct_short = self.distill_loss(
                     image_features=image_features_short,
                     text_features=text_features_short,
                     logit_scale=self.model.module.logit_scale.exp(),
                     dist_image_features=teacher_image_features_short,
                     dist_text_features=teacher_text_features_short,
-                    dist_logit_scale=self.dist_logit_scale
                 )
                 
                 # 总损失
                 # TODO: 修改系数
-                loss = loss_long + loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
+                # loss = loss_long + loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
+                loss = distill_loss_long * 1.5 + distill_loss_short * 0.5
+                # loss = loss_long + loss_short
 
                 '''
                 for key, val in teacher_features.items():
@@ -174,7 +183,14 @@ class CLIP_Clean_Train():
             self.writer.add_scalar("Loss/loss_short", loss_short.item(), step)
             self.writer.add_scalar("Loss/distill_loss_long", distill_loss_long.item(), step)
             self.writer.add_scalar("Loss/distill_loss_short", distill_loss_short.item(), step)
+
+            self.writer.add_scalar("Accuracy/i2t_long", i2t_correct_long, step)
+            self.writer.add_scalar("Accuracy/t2i_long", t2i_correct_long, step)
+            self.writer.add_scalar("Accuracy/i2t_short", i2t_correct_short, step)
+            self.writer.add_scalar("Accuracy/t2i_short", t2i_correct_short, step)
+            
             self.writer.add_scalar("LogitScale/student", self.model.module.logit_scale.item(), step)
+
             
 
         #     # 更新损失
@@ -187,7 +203,13 @@ class CLIP_Clean_Train():
     def train(self, resume=False, warmup_length=200):
         trainset = share4v_kd_train_dataset()
         train_sampler = DistributedSampler(dataset=trainset, shuffle=True)
-        train_loader = torch.utils.data.DataLoader(trainset, batch_size=self.batch_size, sampler=train_sampler, num_workers=32, pin_memory=True)
+        train_loader = torch.utils.data.DataLoader(
+            trainset, 
+            batch_size = self.batch_size, 
+            sampler = train_sampler, 
+            num_workers = min(cpu_count(), 8),  # 32
+            pin_memory = True
+        )
 
         self.scheduler = cosine_lr(self.optimizer, base_lr=self.lr, warmup_length=warmup_length, steps=self.num_epoch * len(train_loader))
         start_epoch = 0
@@ -262,7 +284,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_length", default=200, type=int, help="warmup_length.")
     parser.add_argument("--base_model", default="ViT-B/16", help="CLIP Base Model")
     parser.add_argument(
-        "--batch-size", type=int, default=16, help="Batch size per gpu."#112
+        "--batch-size", type=int, default=12, help="Batch size per gpu."#112
     )
     parser.add_argument(
         "--epochs", type=int, default=1, help="Number of epochs to train for."

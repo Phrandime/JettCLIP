@@ -27,7 +27,7 @@ def pre_featurize():
     # model.cuda()
 
     with open(data4v_root + json_name, 'r', encoding='utf8') as fp:
-        json_data = json.load(fp)
+        json_data = json.load(fp)[:24]
     
     json_new = []
     features = []
@@ -44,10 +44,6 @@ def pre_featurize():
 
         with torch.no_grad():
             feature = model(image_tensor, text, short_text)  # a dict
-        
-        for key, val in feature.items():
-            print(key, val.dtype)
-        raise
 
         feature = {key: value.cpu() for key, value in feature.items()}
         features.append(feature)
@@ -58,8 +54,8 @@ def pre_featurize():
             'caption': json_data[index]['conversations'][1]['value'],
         })
     
-    json_output = os.path.join(data4v_root, 'captions.json')
-    features_output = os.path.join(data4v_root, 'features.pkl')
+    json_output = os.path.join(data4v_root, 'captions_24B.json')
+    features_output = os.path.join(data4v_root, 'features_24B.pkl')
 
     with open(json_output, 'w') as fp:
         json.dump(json_new, fp, separators=(',', ':'))

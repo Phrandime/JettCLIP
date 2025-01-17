@@ -240,7 +240,17 @@ class DistillClipLoss(ClipLoss):
             self.dist_loss(dist_logits_per_text, logits_per_text)
         ) / 2 * self.distill_loss_weights[1]
 
-        if output_dict:
-            return {"contrastive_loss": contrastive_loss, "distill_loss": distill_loss}
+        # Calculate accuracy for I2T and T2I
+        with torch.no_grad():
+            i2t_correct = (logits_per_image.argmax(dim=1) == labels).float().mean().item()
+            t2i_correct = (logits_per_text.argmax(dim=1) == labels).float().mean().item()
 
-        return contrastive_loss, distill_loss
+        if output_dict:
+            return {
+                "contrastive_loss": contrastive_loss,
+                "distill_loss": distill_loss,
+                "accuracy_i2t": i2t_correct,  # Image-to-Text accuracy
+                "accuracy_t2i": t2i_correct   # Text-to-Image accuracy
+            }
+
+        return contrastive_loss, distill_loss, i2t_correct, t2i_correct

@@ -62,7 +62,7 @@ def pre_featurize():
     dataset = ImageTextDataset(os.path.join(data4v_root, json_name), image_root)
     dataloader = data.DataLoader(
         dataset, 
-        batch_size=64, 
+        batch_size=128, 
         shuffle=False, 
         num_workers=min(cpu_count(), 8), 
         pin_memory=True,

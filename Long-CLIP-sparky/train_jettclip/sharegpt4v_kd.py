@@ -7,8 +7,8 @@ import os
 import pickle
 
 data4v_root = '../../Long-CLIP/ShareGPT4V/data/'  # 'sharegpt4v/data/'
-json_name = 'captions.json'
-tf_name = 'features.pkl'  # teacher_features
+json_name = 'captions_mini.json'
+tf_name = 'features_mini.pkl'  # teacher_features
 
 
 class share4v_kd_train_dataset(data.Dataset):
