@@ -1,0 +1,2 @@
+export PYTHONPATH=$PYTHONPATH:/home/wxl/Downloads/git_repo/JettCLIP/Long-CLIP-sparky
+python train_jettclip/train_kd.py --base_model /home/wxl/Downloads/git_repo/ml-mobileclip/checkpoints/mobileclip_s0.pt

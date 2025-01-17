@@ -39,6 +39,8 @@ class CLIP_Clean_Train():
 
         # TODO: load JettCLIP model after implementing it.
         self.model, _ = longclip.load_from_clip(self.base_model, device='cpu',download_root=args.download_root)
+        # import ipdb;ipdb.set_trace()
+        print("Model load success...")
         # self.model, _ = longclip.load('../checkpoints/longclip-B.pt', device='cpu')  # load teacher model for checking
         self.model.train()
         self.model.logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale)  
@@ -50,7 +52,7 @@ class CLIP_Clean_Train():
         self.weight_decay = args.weight_decay
         self.warmup_length = args.warmup_length
         if args.exp_name == "auto":
-            self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_logs={args.log_scale}_64xb_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+            self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_logs={args.log_scale}_64xb_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         else:
             self.logdir = args.exp_name
         self.ckptdir = self.logdir + "/ckpt/"
@@ -163,7 +165,7 @@ class CLIP_Clean_Train():
                 print(f"loss_long: {loss_long}\nloss_short: {loss_short}\ndistill_loss_long: {distill_loss_long}\ndistill_loss_short: {distill_loss_short}\n")
                 '''
                 
-            
+            # print("loss: ", loss)
             # 梯度反向传播和优化器更新
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
@@ -184,8 +186,9 @@ class CLIP_Clean_Train():
         # return running_loss_long / num_batches_per_epoch, running_loss_short / num_batches_per_epoch
         
     
-    def train(self, resume=False, warmup_length=200):
-        trainset = share4v_kd_train_dataset()
+    def train(self, resume=False, warmup_length=200, model_name = None):
+        trainset = share4v_kd_train_dataset(model_name=model_name)
+        print("dataset init success...")
         train_sampler = DistributedSampler(dataset=trainset, shuffle=True)
         train_loader = torch.utils.data.DataLoader(trainset, batch_size=self.batch_size, sampler=train_sampler, num_workers=32, pin_memory=True)
 
@@ -193,6 +196,7 @@ class CLIP_Clean_Train():
         start_epoch = 0
         resume_iter = 0
         
+        print("Train Starting...")
         for epoch in range(start_epoch, self.num_epoch):
             
             self.train_epoch(train_loader, epoch, start_iter=resume_iter)
@@ -284,4 +288,4 @@ if __name__ == "__main__":
         local_rank=local_rank, 
         args=args
         )
-    trainer.train(resume=args.resume, warmup_length=args.warmup_length)
+    trainer.train(resume=args.resume, warmup_length=args.warmup_length, model_name = args.base_model)

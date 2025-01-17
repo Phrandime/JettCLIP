@@ -66,12 +66,17 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
     model_path = name
 
     state_dict = torch.load(model_path, map_location="cpu")
-    
-    model = build_model(state_dict or model.state_dict(), load_from_clip = False).to(device)
-
+    print("walk in longclip load")
+    try:
+        model = build_model(state_dict or model.state_dict(), load_from_clip = False).to(device)
+    except:
+        model, transform = build_model(state_dict or model.state_dict(), load_from_clip = False)
+        model = model.to(device)
+    # import ipdb;ipdb.set_trace()
     if str(device) == "cpu":
         model.float()
-
+    if "s0.pt" in name:
+        return model, transform
     return model, _transform(model.visual.input_resolution)
         
     
@@ -223,11 +228,15 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
             if jit:
                 warnings.warn(f"File {model_path} is not a JIT archive. Loading as a state dict instead")
                 jit = False
-            state_dict = torch.load(opened_file, map_location="cpu")
-
-    model = build_model(state_dict or model.state_dict(), load_from_clip = True).to(device)
+            state_dict = torch.load(model_path)
+    if "s0.pt" in name:
+        model, transform = build_model(state_dict or model.state_dict(), load_from_clip = True)
+        model = model.to(device)
+        positional_embedding_pre = model.text_encoder.positional_embedding.type(model.dtype)
+    else:
+        model = build_model(state_dict or model.state_dict(), load_from_clip = True).to(device)
         
-    positional_embedding_pre = model.positional_embedding.type(model.dtype)
+        positional_embedding_pre = model.positional_embedding.type(model.dtype)
             
     length, dim = positional_embedding_pre.shape
     keep_len = 20
@@ -246,12 +255,17 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
     posisitonal_embedding_new[4*length -3*keep_len - 1] = positional_embedding_pre[length-1] + 3*(positional_embedding_pre[length-1] - positional_embedding_pre[length-2])/4
             
     positional_embedding_res = posisitonal_embedding_new.clone()
-            
-    model.positional_embedding = nn.Parameter(posisitonal_embedding_new, requires_grad=False)
-    model.positional_embedding_res = nn.Parameter(positional_embedding_res, requires_grad=True)
+    if "s0.pt" in name:
+        model.text_encoder.positional_embedding = nn.Parameter(posisitonal_embedding_new, requires_grad=False)
+        model.text_encoder.positional_embedding_res = nn.Parameter(positional_embedding_res, requires_grad=True)
+    else:        
+        model.positional_embedding = nn.Parameter(posisitonal_embedding_new, requires_grad=False)
+        model.positional_embedding_res = nn.Parameter(positional_embedding_res, requires_grad=True)
 
     if str(device) == "cpu":
         model.float()
+    if "s0.pt" in name:
+        return model, transform
     return model, _transform(model.visual.input_resolution)
         
     def _node_get(node: torch._C.Node, key: str):

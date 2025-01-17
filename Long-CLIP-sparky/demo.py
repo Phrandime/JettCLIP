@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = longclip.load("./checkpoints/longclip-B.pt", device=device)
+model, preprocess = longclip.load("/home/wxl/Downloads/git_repo/ml-mobileclip/checkpoints/mobileclip_s0.pt", device=device)
 
 text = longclip.tokenize(["A man is crossing the street with a red car parked nearby.", "A man is driving a car in an urban scene."]).to(device)
 image = preprocess(Image.open("./img/demo.png")).unsqueeze(0).to(device)

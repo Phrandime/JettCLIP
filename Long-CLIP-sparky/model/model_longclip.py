@@ -1,10 +1,33 @@
 from collections import OrderedDict
-from typing import Tuple, Union
-
+from typing import Tuple, Union, Any, Optional, Dict
+import os
+import json
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+import math
+from torchvision.transforms import (
+    CenterCrop,
+    Compose,
+    InterpolationMode,
+    Resize,
+    ToTensor,
+    Normalize,
+)
+from model.mobileclip_copy.text_encoder import (
+    TextTransformer,
+)
+from PIL import Image
+from model.mobileclip_copy.image_encoder import MCi
+try:
+    from torchvision.transforms import InterpolationMode
+    BICUBIC = InterpolationMode.BICUBIC
+except ImportError:
+    BICUBIC = Image.BICUBIC
+
+def _convert_image_to_rgb(image):
+    return image.convert("RGB")
 
 
 class Bottleneck(nn.Module):
@@ -497,7 +520,95 @@ class CLIP(nn.Module):
                 + F.cross_entropy(sim_ts2i, targets, label_smoothing=0.1)
             ) / 2
         return loss_itcl, loss_itcs
-       
+      
+
+
+class CLIP_ml(nn.Module):
+    """Base class for multi-modal image-text data"""
+
+    def __init__(self, cfg: Dict, output_dict: bool = False, *args, **kwargs) -> None:
+        super().__init__()
+        self.output_dict = output_dict
+        self.projection_dim = cfg["embed_dim"]
+        if self.projection_dim is None:
+            raise ValueError("Please specify `embed_dim` in model config.")
+
+        self.image_encoder = MCi(
+            model_name=cfg["image_cfg"]["model_name"],
+            projection_dim=self.projection_dim,
+        )
+        self.text_encoder = TextTransformer(
+            cfg=cfg["text_cfg"], projection_dim=self.projection_dim
+        )
+        self.logit_scale = nn.Parameter(torch.ones([]) * math.log(1.0 / 0.07))
+        # self.positional_embedding = nn.Parameter(torch.empty(77, 512))
+        # self.positional_embedding_res = nn.Parameter(torch.empty(77, 512))
+        self.mask1 = torch.zeros([248, 1])
+        self.mask1[:20, :] = 1
+        self.mask2 = torch.zeros([248, 1])
+        self.mask2[20:, :] = 1
+
+    def _exponentiate_and_clip_logits(self, max_scale: float = 100.0):
+        scale = self.logit_scale.exp()
+        scale = torch.clamp(scale, 0, max_scale)
+        return scale
+    @property
+    def dtype(self):
+        return self.text_encoder.positional_embedding.dtype
+    
+    def encode_image(self, image: torch.Tensor, normalize: bool = False):
+        image_encoder_out = self.image_encoder(image)
+        if isinstance(image_encoder_out, dict):
+            features = image_encoder_out["logits"]
+        else:
+            features = image_encoder_out
+        return F.normalize(features, dim=-1) if normalize else features
+
+    def encode_text(self, text: torch.Tensor, normalize: bool = False):
+        text_features = self.text_encoder(text_tokens=text, key_padding_mask=None)
+        return F.normalize(text_features, dim=-1) if normalize else text_features
+    
+    def encode_text_full(self, text): 
+        return self.encode_text(text)
+    
+    #rewrite PCA to avoid inf
+    def PCA(self, input_tensor, PCA_dim):
+        # 计算均值
+        mean = torch.mean(input_tensor, dim=0)
+        # 去均值
+        X_centered = input_tensor - mean.unsqueeze(0)
+        X_centered = X_centered.float()
+
+        # 使用SVD而不是eig来计算主成分
+        U, S, Vt = torch.linalg.svd(X_centered, full_matrices=False)
+        principal_components = Vt.T[:, :PCA_dim]
+        
+        # 转换到新的维度
+        X_transformed = torch.mm(X_centered, principal_components)
+        # 恢复到原始空间
+        X_reversed = torch.mm(X_transformed, principal_components.T)
+        X_reversed += mean
+
+        return X_reversed
+
+    def forward(self, image, text_long, text_short):
+        image_features_long = self.encode_image(image)
+        text_features_long = self.encode_text(text_long)
+        text_features_short = self.encode_text(text_short)
+
+        # normalized features
+        image_features_long = image_features_long / image_features_long.norm(dim=1, keepdim=True)
+        text_features_long = text_features_long / text_features_long.norm(dim=1, keepdim=True)
+        text_features_short = text_features_short / text_features_short.norm(dim=1, keepdim=True)
+        image_features_short = self.PCA(image_features_long, 32)
+            
+        # 直接返回特征，不计算损失
+        return {
+            "image_features_long": image_features_long,
+            "text_features_long": text_features_long,
+            "image_features_short": image_features_short,
+            "text_features_short": text_features_short
+        }
 
 
 def convert_weights(model: nn.Module):
@@ -526,6 +637,7 @@ def convert_weights(model: nn.Module):
 
 def build_model(state_dict: dict, load_from_clip: bool):
     vit = "visual.proj" in state_dict
+    ml = "logit_scale" in state_dict
 
     if vit:
         vision_width = state_dict["visual.conv1.weight"].shape[0]
@@ -533,6 +645,45 @@ def build_model(state_dict: dict, load_from_clip: bool):
         vision_patch_size = state_dict["visual.conv1.weight"].shape[-1]
         grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
         image_resolution = vision_patch_size * grid_size
+    elif ml:
+        model_cfg_file = "/home/wxl/Downloads/git_repo/ml-mobileclip/mobileclip/configs/mobileclip_s0.json"
+        # Get config from yaml file
+        if not os.path.exists(model_cfg_file):
+            raise ValueError(f"mobile clip model config file path error")
+        model_cfg = json.load(open(model_cfg_file, "r"))
+        resolution = model_cfg["image_cfg"]["image_size"]
+        resize_size = resolution
+        centercrop_size = resolution
+        aug_list = [
+            Resize(
+                resize_size,
+                interpolation=BICUBIC,
+            ),
+            CenterCrop(centercrop_size),
+            _convert_image_to_rgb,
+            ToTensor(),
+            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ]
+        preprocess = Compose(aug_list)
+
+        # 没有加入重参数化, 更改模型position_embedding
+        model = CLIP_ml(model_cfg)
+        model.eval()
+        if state_dict is not None:
+            pretrained_state_dict = state_dict
+            # import ipdb;ipdb.set_trace()
+
+            pretrained_state_dict_wo = {k: v for k, v in pretrained_state_dict.items() if k != 'text_encoder.positional_embedding.pos_embed.pos_embed'}
+            # pretrained_state_dict_wo['positional_embedding'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
+            # pretrained_state_dict_wo['positional_embedding_res'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
+
+            pretrained_state_dict_wo['text_encoder.positional_embedding'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
+            pretrained_state_dict_wo['text_encoder.positional_embedding_res'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
+
+            model.load_state_dict(pretrained_state_dict_wo)
+            # import ipdb;ipdb.set_trace()
+            # model.load_state_dict(state_dict)
+        return model, preprocess
     else:
         counts: list = [len(set(k.split(".")[2] for k in state_dict if k.startswith(f"visual.layer{b}"))) for b in [1, 2, 3, 4]]
         vision_layers = tuple(counts)
