@@ -45,7 +45,7 @@ class CLIP_Clean_Train():
         self.model, _ = longclip.load('../checkpoints/longclip-B.pt', device='cpu')  # load teacher model for checking
         # self.model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='../checkpoints/mobileclip_s0.pt')
         self.model.train()
-        self.model.logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale)  
+        # self.model.logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale)  
         self.model = self.model.cuda()
 
         self.tokenizer = longclip.tokenize
