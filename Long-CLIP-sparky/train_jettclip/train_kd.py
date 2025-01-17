@@ -204,7 +204,7 @@ class CLIP_Clean_Train():
             
             self.train_epoch(train_loader, epoch, start_iter=resume_iter)
             if self.rank == 0:
-                name = "longclip.pt"
+                name = "s0.pt"
                 now = datetime.now()
                 formatted_date = now.strftime("%m-%d--%H_%M_%S_")
                 #torch.distributed.barrier()
