@@ -242,7 +242,7 @@ class DistillClipLoss(ClipLoss):
             distill_loss = (
                 torch.sum((image_features - dist_image_features) ** 2, dim=1).mean() +
                 torch.sum((text_features - dist_text_features) ** 2, dim=1).mean()
-            )
+            ) / 2 * self.distill_loss_weights[1]
 
         # Calculate accuracy for I2T and T2I
         with torch.no_grad():
