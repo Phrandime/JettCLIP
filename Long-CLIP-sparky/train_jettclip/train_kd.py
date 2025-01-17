@@ -30,8 +30,6 @@ from torch.cuda.amp import GradScaler
 from datetime import datetime
 from multiprocessing import cpu_count
 
-import mobileclip
-
 
 class CLIP_Clean_Train():
     def __init__(self, rank, world_size, local_rank, args):
@@ -43,21 +41,20 @@ class CLIP_Clean_Train():
         # TODO: load JettCLIP model after implementing it.
         # self.model, _ = longclip.load_from_clip(self.base_model, device='cpu',download_root=args.download_root)
         self.model, _ = longclip.load('../checkpoints/longclip-B.pt', device='cpu')  # load teacher model for checking
-        # self.model, _, _ = mobileclip.create_model_and_transforms('mobileclip_s0', pretrained='../checkpoints/mobileclip_s0.pt')
+        self.tokenizer = longclip.tokenize
+
         self.model.train()
         # self.model.logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale)  
         self.model = self.model.cuda()
 
-        self.tokenizer = longclip.tokenize
-        # self.tokenizer = mobileclip.get_tokenizer('mobileclip_s0')
-        
         self.batch_size = args.batch_size
         self.num_epoch = args.epochs
         self.lr = args.lr
         self.weight_decay = args.weight_decay
         self.warmup_length = args.warmup_length
         if args.exp_name == "auto":
-            self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_logs={args.log_scale}_64xb_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+            # self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_logs={args.log_scale}_64xb_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+            self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
         else:
             self.logdir = args.exp_name
         self.ckptdir = self.logdir + "/ckpt/"
@@ -73,14 +70,18 @@ class CLIP_Clean_Train():
             label_smoothing = self.label_smoothing,
             dist_logit_scale = self.dist_logit_scale.exp(),  # 初始 dist_logit_scale
             rank = self.rank,                  # 当前设备的 rank
-            world_size = self.world_size       # 分布式训练的 world_size
+            world_size = self.world_size,      # 分布式训练的 world_size
+            method = args.dist_method,
         )
 
-        self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
+        if args.dist_method == "FD":
+            # 冻结 logit_scale 参数
+            self.model.logit_scale.requires_grad = False
+
+        self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank], find_unused_parameters=False)
            
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
-        self.scaler =GradScaler()
-
+        self.scaler = GradScaler()
 
     def train_epoch(self, dataloader, epoch, start_iter=0):
         # running_loss_long = 0.0
@@ -107,39 +108,20 @@ class CLIP_Clean_Train():
 
             with torch.cuda.amp.autocast():
             # if True:
-                # 获取模型返回的特征
-                features = self.model(images, texts, short_texts)
-
-                # TODO: 修改损失函数，结合 teacher_features 计算知识蒸馏损失，这里 teacher_features 是与 features 结构相同的字典
-                # 建议在外部定义损失函数，在这里直接调用函数。仿照 DistillClipLoss 计算 Contrastive Relational Distillation 即可
-                # Long-CLIP 的每个图像对应一个长文本和一个短文本，图像 encoding 得到 image_features_long 之后，通过 PCA 得到 image_features_short
-                # image_features_long 应该和 text_features_long 对齐，image_features_short 应该和 text_features_short 对齐
-                # Already finished by ChatGPT and modified by Sparky.
-
-                # 提取特征
-                image_features_long = features["image_features_long"]  # (batch_size, encoding_dim)
-                text_features_long = features["text_features_long"]  # (batch_size, encoding_dim)
-                image_features_short = features["image_features_short"]  # (batch_size, encoding_dim)
-                text_features_short = features["text_features_short"]  # (batch_size, encoding_dim)
-
                 # 从 teacher_features 中获取教师模型的特征
                 teacher_image_features_long = teacher_features["image_features_long"]
                 teacher_text_features_long = teacher_features["text_features_long"]
                 teacher_image_features_short = teacher_features["image_features_short"]
                 teacher_text_features_short = teacher_features["text_features_short"]
 
-                '''
-                print('image_features_long: ', image_features_long.dtype)
-                print('text_features_long: ', text_features_long.dtype)
-                print('image_features_short: ', image_features_short.dtype)
-                print('text_features_short: ', text_features_short.dtype)
-                print('teacher_image_features_long: ', teacher_image_features_long.dtype)
-                print('teacher_text_features_long: ', teacher_text_features_long.dtype)
-                print('teacher_image_features_short: ', teacher_image_features_short.dtype)
-                print('teacher_text_features_short: ', teacher_text_features_short.dtype)
+                # 获取模型返回的特征
+                features = self.model(images, texts, short_texts)
 
-                # raise
-                '''
+                # 提取特征
+                image_features_long = features["image_features_long"]  # (batch_size, encoding_dim)
+                text_features_long = features["text_features_long"]  # (batch_size, encoding_dim)
+                image_features_short = features["image_features_short"]  # (batch_size, encoding_dim)
+                text_features_short = features["text_features_short"]  # (batch_size, encoding_dim)
 
                 # 调用 DistillClipLoss 计算损失
                 loss_long, distill_loss_long, i2t_correct_long, t2i_correct_long = self.distill_loss(
@@ -160,24 +142,15 @@ class CLIP_Clean_Train():
                 
                 # 总损失
                 # TODO: 修改系数
-                # loss = loss_long + loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
-                loss = distill_loss_long * 1.5 + distill_loss_short * 0.5
+                loss = loss_long + loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
+                # loss = distill_loss_long * 1.5 + distill_loss_short * 0.5
                 # loss = loss_long + loss_short
 
-                '''
-                for key, val in teacher_features.items():
-                    print('teacher_' + key, torch.norm(val, p=2, dim=1))
-                    print('distanc_' + key, torch.norm(val - features[key], p=2, dim=1))
-
-                print(f"loss_long: {loss_long}\nloss_short: {loss_short}\ndistill_loss_long: {distill_loss_long}\ndistill_loss_short: {distill_loss_short}\n")
-                '''
-                
-            
             # 梯度反向传播和优化器更新
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
-
+            
             # 记录损失和 logit scale
             self.writer.add_scalar("Loss/loss_long", loss_long.item(), step)
             self.writer.add_scalar("Loss/loss_short", loss_short.item(), step)
@@ -282,6 +255,7 @@ if __name__ == "__main__":
     parser.add_argument('--log_scale', default=4.6052, type=float, help='clip temperature log scale.')
     parser.add_argument("--exp_name", default="auto", type=str, help="specify experiment name.")
     parser.add_argument("--warmup_length", default=200, type=int, help="warmup_length.")
+    parser.add_argument("--dist-method", default="FD", type=str, help="distillation method")  # added by Sparky
     parser.add_argument("--base_model", default="ViT-B/16", help="CLIP Base Model")
     parser.add_argument(
         "--batch-size", type=int, default=12, help="Batch size per gpu."#112
