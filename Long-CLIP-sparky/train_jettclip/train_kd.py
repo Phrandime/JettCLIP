@@ -54,7 +54,7 @@ class CLIP_Clean_Train():
         self.warmup_length = args.warmup_length
         if args.exp_name == "auto":
             # self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_logs={args.log_scale}_64xb_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
-            self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
+            self.logdir = f"longclip/lr={args.lr}_wd={args.weight_decay}_wl={args.warmup_length}_dist={args.dist_method}_{datetime.now().strftime("%Y%m%d_%H%M%S")}"
         else:
             self.logdir = args.exp_name
         self.ckptdir = self.logdir + "/ckpt/"
@@ -65,12 +65,12 @@ class CLIP_Clean_Train():
         self.dist_logit_scale = torch.nn.Parameter(torch.ones([]) * args.log_scale, requires_grad=False)  # 固定值
         
         self.distill_loss = DistillClipLoss(
-            distill_loss_weights = [1.0, 1.0],  # 知识蒸馏损失的权重
-            teacher_dimension = [-1],          # 教师特征维度一致
+            distill_loss_weights = {"CRD": 0.5, "FD": 0.5},     # 知识蒸馏损失的权重
+            teacher_dimension = [-1],                           # 教师特征维度一致
             label_smoothing = self.label_smoothing,
-            dist_logit_scale = self.dist_logit_scale.exp(),  # 初始 dist_logit_scale
-            rank = self.rank,                  # 当前设备的 rank
-            world_size = self.world_size,      # 分布式训练的 world_size
+            dist_logit_scale = self.dist_logit_scale.exp(),     # 初始 dist_logit_scale
+            rank = self.rank,                                   # 当前设备的 rank
+            world_size = self.world_size,                       # 分布式训练的 world_size
             method = args.dist_method,
         )
 
@@ -255,7 +255,7 @@ if __name__ == "__main__":
     parser.add_argument('--log_scale', default=4.6052, type=float, help='clip temperature log scale.')
     parser.add_argument("--exp_name", default="auto", type=str, help="specify experiment name.")
     parser.add_argument("--warmup_length", default=200, type=int, help="warmup_length.")
-    parser.add_argument("--dist-method", default="FD", type=str, help="distillation method")  # added by Sparky
+    parser.add_argument("--dist-method", default="mix", type=str, help="distillation method")  # added by Sparky
     parser.add_argument("--base_model", default="ViT-B/16", help="CLIP Base Model")
     parser.add_argument(
         "--batch-size", type=int, default=12, help="Batch size per gpu."#112
