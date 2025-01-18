@@ -635,9 +635,10 @@ def convert_weights(model: nn.Module):
     model.apply(_convert_weights_to_fp16)
 
 
-def build_model(state_dict: dict, load_from_clip: bool):
+def build_model(state_dict: dict=None, load_from_clip: bool=True):
     vit = "visual.proj" in state_dict
     ml = "logit_scale" in state_dict
+    jett = "jett" in state_dict
 
     if vit:
         vision_width = state_dict["visual.conv1.weight"].shape[0]
@@ -645,7 +646,7 @@ def build_model(state_dict: dict, load_from_clip: bool):
         vision_patch_size = state_dict["visual.conv1.weight"].shape[-1]
         grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
         image_resolution = vision_patch_size * grid_size
-    elif ml:
+    elif ml or jett:
         model_cfg_file = "/home/wxl/Downloads/git_repo/ml-mobileclip/mobileclip/configs/mobileclip_s0.json"
         # Get config from yaml file
         if not os.path.exists(model_cfg_file):
@@ -669,7 +670,7 @@ def build_model(state_dict: dict, load_from_clip: bool):
         # 没有加入重参数化, 更改模型position_embedding
         model = CLIP_ml(model_cfg)
         model.eval()
-        if state_dict is not None:
+        if state_dict is not None and not jett:
             pretrained_state_dict = state_dict
             # import ipdb;ipdb.set_trace()
 

@@ -64,18 +64,20 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
     """
     
     model_path = name
-
-    state_dict = torch.load(model_path, map_location="cpu")
+    if "jett" in name:
+        state_dict = {"jett":True}
+    else:
+        state_dict = torch.load(model_path, map_location="cpu")
     print("walk in longclip load")
     try:
         model = build_model(state_dict or model.state_dict(), load_from_clip = False).to(device)
     except:
-        model, transform = build_model(state_dict or model.state_dict(), load_from_clip = False)
+        model, transform = build_model(state_dict, load_from_clip = False)
         model = model.to(device)
     # import ipdb;ipdb.set_trace()
     if str(device) == "cpu":
         model.float()
-    if "s0.pt" in name:
+    if "s0.pt" in name or "jett" in name:
         return model, transform
     return model, _transform(model.visual.input_resolution)
         
@@ -211,26 +213,31 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
 
         return download_target
 
+    jett = False
     if name in _MODELS:
         model_path = _download(_MODELS[name], download_root or os.path.expanduser("~/.cache/clip"))
     elif os.path.isfile(name):
         model_path = name
+    elif "jett" in name:
+        jett = True # create empty jett model
+        state_dict = {"jett":True}
     else:
         raise RuntimeError(f"Model {name} not found; available models = {available_models()}")
 
-    with open(model_path, 'rb') as opened_file:
-        try:
-            # loading JIT archive
-            model = torch.jit.load(opened_file, map_location=device if jit else "cpu").eval()
-            state_dict = None
-        except RuntimeError:
-            # loading saved state dict
-            if jit:
-                warnings.warn(f"File {model_path} is not a JIT archive. Loading as a state dict instead")
-                jit = False
-            state_dict = torch.load(model_path)
-    if "s0.pt" in name:
-        model, transform = build_model(state_dict or model.state_dict(), load_from_clip = True)
+    if not jett:
+        with open(model_path, 'rb') as opened_file:
+            try:
+                # loading JIT archive
+                model = torch.jit.load(opened_file, map_location=device if jit else "cpu").eval()
+                state_dict = None
+            except RuntimeError:
+                # loading saved state dict
+                if jit:
+                    warnings.warn(f"File {model_path} is not a JIT archive. Loading as a state dict instead")
+                    jit = False
+                state_dict = torch.load(model_path)
+    if "s0.pt" in name or "jett" in name:
+        model, transform = build_model(state_dict, load_from_clip = True)
         model = model.to(device)
         positional_embedding_pre = model.text_encoder.positional_embedding.type(model.dtype)
     else:
@@ -255,7 +262,7 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
     posisitonal_embedding_new[4*length -3*keep_len - 1] = positional_embedding_pre[length-1] + 3*(positional_embedding_pre[length-1] - positional_embedding_pre[length-2])/4
             
     positional_embedding_res = posisitonal_embedding_new.clone()
-    if "s0.pt" in name:
+    if "s0.pt" in name or jett:
         model.text_encoder.positional_embedding = nn.Parameter(posisitonal_embedding_new, requires_grad=False)
         model.text_encoder.positional_embedding_res = nn.Parameter(positional_embedding_res, requires_grad=True)
     else:        
@@ -264,7 +271,7 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
 
     if str(device) == "cpu":
         model.float()
-    if "s0.pt" in name:
+    if "s0.pt" in name or "jett" in name:
         return model, transform
     return model, _transform(model.visual.input_resolution)
         

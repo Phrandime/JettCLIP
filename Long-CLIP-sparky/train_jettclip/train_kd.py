@@ -69,11 +69,15 @@ class CLIP_Clean_Train():
             label_smoothing = self.label_smoothing,
             dist_logit_scale = self.dist_logit_scale.exp(),  # 初始 dist_logit_scale
             rank = self.rank,                  # 当前设备的 rank
-            world_size = self.world_size       # 分布式训练的 world_size
+            world_size = self.world_size,       # 分布式训练的 world_size
+            method=args.dist_method,
         )
 
-        self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
-           
+        # self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank])
+        if args.dist_method == "FD":
+            # 冻结 logit_scale 参数
+            self.model.logit_scale.requires_grad = False
+        self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank], find_unused_parameters=False)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.scaler =GradScaler()
 
@@ -136,7 +140,7 @@ class CLIP_Clean_Train():
                 '''
 
                 # 调用 DistillClipLoss 计算损失
-                loss_long, distill_loss_long = self.distill_loss(
+                loss_long, distill_loss_long, i2t_correct_long, t2i_correct_long = self.distill_loss(
                     image_features=image_features_long,
                     text_features=text_features_long,
                     logit_scale=self.model.module.logit_scale.exp(),  # 学生的缩放因子
@@ -145,7 +149,7 @@ class CLIP_Clean_Train():
                     dist_logit_scale=self.dist_logit_scale  # 教师的缩放因子
                 )
 
-                loss_short, distill_loss_short = self.distill_loss(
+                loss_short, distill_loss_short, i2t_correct_short, t2i_correct_short = self.distill_loss(
                     image_features=image_features_short,
                     text_features=text_features_short,
                     logit_scale=self.model.module.logit_scale.exp(),
@@ -156,7 +160,11 @@ class CLIP_Clean_Train():
                 
                 # 总损失
                 # TODO: 修改系数
-                loss = loss_long + loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
+                # loss = 0.8*loss_long + 0.4*loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
+                # loss = distill_loss_long * 1.5 + distill_loss_short * 0.5
+                # loss = loss_long + loss_short
+                # loss = loss_long + loss_short + distill_loss_long + distill_loss_short
+                loss = distill_loss_long + distill_loss_short
 
                 '''
                 for key, val in teacher_features.items():
@@ -177,10 +185,19 @@ class CLIP_Clean_Train():
             self.writer.add_scalar("Loss/loss_short", loss_short.item(), step)
             self.writer.add_scalar("Loss/distill_loss_long", distill_loss_long.item(), step)
             self.writer.add_scalar("Loss/distill_loss_short", distill_loss_short.item(), step)
+            self.writer.add_scalar("Accuracy/i2t_long", i2t_correct_long, step)
+            self.writer.add_scalar("Accuracy/t2i_long", t2i_correct_long, step)
+            self.writer.add_scalar("Accuracy/i2t_short", i2t_correct_short, step)
+            self.writer.add_scalar("Accuracy/t2i_short", t2i_correct_short, step)
             self.writer.add_scalar("LogitScale/student", self.model.module.logit_scale.item(), step)
             # torch.save(self.model.module.state_dict(),"../checkpoints/test.pt")
-            if i%1000 == 0:
-                torch.save(self.model.module.state_dict(),"./checkpoints/current_train_s0.pt")
+            if i%500 == 0:
+                if not os.path.exists(f"./checkpoints/epoch{epoch}/"):
+                    try:
+                        os.makedirs(f"./checkpoints/epoch{epoch}/")
+                    except:
+                        print("file create error")
+                torch.save(self.model.module.state_dict(),f"./checkpoints/epoch{epoch}/train_{i}_s0.pt")
 
         #     # 更新损失
         #     running_loss_long += loss_long.item()
@@ -267,12 +284,13 @@ if __name__ == "__main__":
     parser.add_argument('--log_scale', default=4.6052, type=float, help='clip temperature log scale.')
     parser.add_argument("--exp_name", default="auto", type=str, help="specify experiment name.")
     parser.add_argument("--warmup_length", default=200, type=int, help="warmup_length.")
+    parser.add_argument("--dist-method", default="CRD", type=str, help="distillation method")  # added by Sparky
     parser.add_argument("--base_model", default="ViT-B/16", help="CLIP Base Model")
     parser.add_argument(
-        "--batch-size", type=int, default=16, help="Batch size per gpu."#112
+        "--batch-size", type=int, default=256, help="Batch size per gpu."#112
     )
     parser.add_argument(
-        "--epochs", type=int, default=1, help="Number of epochs to train for."
+        "--epochs", type=int, default=4, help="Number of epochs to train for."
     )
     parser.add_argument(
         "--resume",

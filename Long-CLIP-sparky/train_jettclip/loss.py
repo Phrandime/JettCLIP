@@ -149,19 +149,25 @@ class DistillClipLoss(ClipLoss):
     def __init__(
         self,
         *args,
-        teacher_dimension=[-1],
-        distill_loss_weights=[1.0, 1.0],
-        average_after_softmax=False,
-        dist_logit_scale=None,
-        label_smoothing=None,
+        teacher_dimension = [-1],
+        distill_loss_weights = [1.0, 1.0],
+        average_after_softmax = False,
+        dist_logit_scale = None,
+        label_smoothing = None,
+        method = "CRD",
         **kwargs
     ):
         super().__init__(*args, **kwargs)
+
+        if method not in ["CRD", "FD"]:
+            raise ValueError(f"KD method '{method}' is not implemented.")
+
         self.dist_logit_scale = dist_logit_scale
         self.teacher_dimension = teacher_dimension
         self.distill_loss_weights = distill_loss_weights
         self.average_after_softmax = average_after_softmax
         self.label_smoothing=label_smoothing
+        self.method = method
 
     def get_logits_dist(self, image_features, text_features, logit_scale):
         dims = self.teacher_dimension
@@ -203,16 +209,6 @@ class DistillClipLoss(ClipLoss):
         logits_per_image, logits_per_text = \
             self.get_logits(image_features, text_features, logit_scale)
 
-        if self.dist_logit_scale is not None:
-            dist_logit_scale = self.dist_logit_scale
-
-        if self.average_after_softmax:
-            dist_logits_per_image, dist_logits_per_text = \
-                self.get_logits_dist(dist_image_features, dist_text_features, dist_logit_scale)
-        else:
-            dist_logits_per_image, dist_logits_per_text = \
-                self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
-
         labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
 
         if self.label_smoothing:
@@ -226,21 +222,39 @@ class DistillClipLoss(ClipLoss):
                 F.cross_entropy(logits_per_text, labels)
             ) / 2 * self.distill_loss_weights[0]
 
-        '''
-        print("dist_logits_per_image - norm: ", torch.norm(dist_logits_per_image, p=2, dim=1))
-        print("logits_per_image - norm: ", torch.norm(logits_per_image, p=2, dim=1))
-        print("distance_image - norm: ", torch.norm(dist_logits_per_image - logits_per_image, p=2, dim=1))
-        print("dist_logits_per_text - norm: ", torch.norm(dist_logits_per_text, p=2, dim=1))
-        print("logits_per_text - norm: ", torch.norm(logits_per_text, p=2, dim=1))
-        print("distance_text - norm: ", torch.norm(dist_logits_per_text - logits_per_text, p=2, dim=1))
-        '''
+        if self.method == "CRD":
+            if self.dist_logit_scale is not None:
+                dist_logit_scale = self.dist_logit_scale
 
-        distill_loss = (
-            self.dist_loss(dist_logits_per_image, logits_per_image) +
-            self.dist_loss(dist_logits_per_text, logits_per_text)
-        ) / 2 * self.distill_loss_weights[1]
+            if self.average_after_softmax:
+                dist_logits_per_image, dist_logits_per_text = \
+                    self.get_logits_dist(dist_image_features, dist_text_features, dist_logit_scale)
+            else:
+                dist_logits_per_image, dist_logits_per_text = \
+                    self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            
+            distill_loss = (
+                self.dist_loss(dist_logits_per_image, logits_per_image) +
+                self.dist_loss(dist_logits_per_text, logits_per_text)
+            ) / 2 * self.distill_loss_weights[1]
+        
+        elif self.method == "FD":
+            distill_loss = (
+                torch.sum((image_features - dist_image_features) ** 2, dim=1).mean() +
+                torch.sum((text_features - dist_text_features) ** 2, dim=1).mean()
+            ) / 2 * self.distill_loss_weights[1]
+
+        # Calculate accuracy for I2T and T2I
+        with torch.no_grad():
+            i2t_correct = (logits_per_image.argmax(dim=1) == labels).float().mean().item()
+            t2i_correct = (logits_per_text.argmax(dim=1) == labels).float().mean().item()
 
         if output_dict:
-            return {"contrastive_loss": contrastive_loss, "distill_loss": distill_loss}
+            return {
+                "contrastive_loss": contrastive_loss,
+                "distill_loss": distill_loss,
+                "accuracy_i2t": i2t_correct,  # Image-to-Text accuracy
+                "accuracy_t2i": t2i_correct   # Text-to-Image accuracy
+            }
 
-        return contrastive_loss, distill_loss
+        return contrastive_loss, distill_loss, i2t_correct, t2i_correct
