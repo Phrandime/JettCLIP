@@ -150,8 +150,7 @@ class DistillClipLoss(ClipLoss):
         self,
         *args,
         teacher_dimension = [-1],
-        distill_loss_weights = [1.0, 1.0],
-        average_after_softmax = False,
+        distill_loss_weights: dict = {"CRD": 0.5, "FD": 0.5},
         dist_logit_scale = None,
         label_smoothing = None,
         method = "CRD",
@@ -159,42 +158,34 @@ class DistillClipLoss(ClipLoss):
     ):
         super().__init__(*args, **kwargs)
 
-        if method not in ["CRD", "FD"]:
+        if method not in ["CRD", "FD", "mix"]:
             raise ValueError(f"KD method '{method}' is not implemented.")
 
         self.dist_logit_scale = dist_logit_scale
         self.teacher_dimension = teacher_dimension
         self.distill_loss_weights = distill_loss_weights
-        self.average_after_softmax = average_after_softmax
         self.label_smoothing=label_smoothing
         self.method = method
-
-    def get_logits_dist(self, image_features, text_features, logit_scale):
-        dims = self.teacher_dimension
-        if self.world_size > 1:
-            all_image_features, all_text_features = gather_features(
-                image_features, text_features,
-                self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
-
-            if self.local_loss:
-                logits_per_image = dot_ensemble_features(image_features, all_text_features.T, logit_scale, dims)
-                logits_per_text = dot_ensemble_features(text_features, all_image_features.T, logit_scale, dims)
-            else:
-                logits_per_image = dot_ensemble_features(all_image_features, all_text_features.T, logit_scale, dims)
-                logits_per_text = logits_per_image.T
-        else:
-            logits_per_image = dot_ensemble_features(image_features, text_features.T, logit_scale, dims)
-            logits_per_text = dot_ensemble_features(text_features, image_features.T, logit_scale, dims)
         
-        return logits_per_image, logits_per_text
-
     def dist_loss(self, teacher_logits, student_logits):
-        if self.average_after_softmax:
-            raise NotImplementedError
-            return -(teacher_logits * student_logits.log_softmax(dim=1)).sum(dim=1).mean(dim=0)
-        else:
-            return (teacher_logits.softmax(dim=1) * (teacher_logits.log_softmax(dim=1) - student_logits.log_softmax(dim=1))).sum(dim=1).mean(dim=0)
+        return (teacher_logits.softmax(dim=1) * (teacher_logits.log_softmax(dim=1) - student_logits.log_softmax(dim=1))).sum(dim=1).mean(dim=0)
             # return -(teacher_logits.softmax(dim=1) * student_logits.log_softmax(dim=1)).sum(dim=1).mean(dim=0)
+
+    def dist_loss_CRD(self, dist_image_features, dist_text_features, logits_per_image, logits_per_text):
+        dist_logits_per_image, dist_logits_per_text = \
+            self.get_logits(dist_image_features, dist_text_features, self.dist_logit_scale)
+        distill_loss = (
+            self.dist_loss(dist_logits_per_image, logits_per_image) +
+            self.dist_loss(dist_logits_per_text, logits_per_text)
+        ) / 2
+        return distill_loss
+    
+    def dist_loss_FD(self, dist_image_features, dist_text_features, image_features, text_features):
+        distill_loss = (
+            torch.sum((image_features - dist_image_features) ** 2, dim=1).mean() +
+            torch.sum((text_features - dist_text_features) ** 2, dim=1).mean()
+        ) / 2
+        return distill_loss
 
     def forward(
             self,
@@ -203,7 +194,6 @@ class DistillClipLoss(ClipLoss):
             logit_scale,
             dist_image_features,
             dist_text_features,
-            dist_logit_scale=None,
             output_dict=False,
     ):
         logits_per_image, logits_per_text = \
@@ -215,34 +205,23 @@ class DistillClipLoss(ClipLoss):
             contrastive_loss = (
                 F.cross_entropy(logits_per_image, labels, label_smoothing=self.label_smoothing) +
                 F.cross_entropy(logits_per_text, labels, label_smoothing=self.label_smoothing)
-            ) / 2 * self.distill_loss_weights[0]
+            ) / 2
         else:
             contrastive_loss = (
                 F.cross_entropy(logits_per_image, labels) +
                 F.cross_entropy(logits_per_text, labels)
-            ) / 2 * self.distill_loss_weights[0]
+            ) / 2
 
         if self.method == "CRD":
-            if self.dist_logit_scale is not None:
-                dist_logit_scale = self.dist_logit_scale
-
-            if self.average_after_softmax:
-                dist_logits_per_image, dist_logits_per_text = \
-                    self.get_logits_dist(dist_image_features, dist_text_features, dist_logit_scale)
-            else:
-                dist_logits_per_image, dist_logits_per_text = \
-                    self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
-            
-            distill_loss = (
-                self.dist_loss(dist_logits_per_image, logits_per_image) +
-                self.dist_loss(dist_logits_per_text, logits_per_text)
-            ) / 2 * self.distill_loss_weights[1]
+            distill_loss = self.dist_loss_CRD(dist_image_features, dist_text_features, logits_per_image, logits_per_text)
         
         elif self.method == "FD":
-            distill_loss = (
-                torch.sum((image_features - dist_image_features) ** 2, dim=1).mean() +
-                torch.sum((text_features - dist_text_features) ** 2, dim=1).mean()
-            ) / 2 * self.distill_loss_weights[1]
+            distill_loss = self.dist_loss_FD(dist_image_features, dist_text_features, image_features, text_features)
+        
+        elif self.method == "mix":
+            distill_loss_crd = self.dist_loss_CRD(dist_image_features, dist_text_features, logits_per_image, logits_per_text)
+            distill_loss_fd = self.dist_loss_FD(dist_image_features, dist_text_features, image_features, text_features)
+            distill_loss = distill_loss_crd * self.distill_loss_weights["CRD"] + distill_loss_fd * self.distill_loss_weights["FD"]
 
         # Calculate accuracy for I2T and T2I
         with torch.no_grad():
