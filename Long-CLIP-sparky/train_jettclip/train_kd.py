@@ -74,10 +74,6 @@ class CLIP_Clean_Train():
             method = args.dist_method,
         )
 
-        if args.dist_method == "FD":
-            # 冻结 logit_scale 参数
-            self.model.logit_scale.requires_grad = False
-
         self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[local_rank], find_unused_parameters=False)
            
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
