@@ -230,8 +230,8 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
     positional_embedding_pre = model.positional_embedding.type(model.dtype)
             
     length, dim = positional_embedding_pre.shape
-    keep_len = 20
-    posisitonal_embedding_new = torch.zeros([4*length-3*keep_len, dim], dtype=model.dtype)
+    keep_len = 19  # 20
+    posisitonal_embedding_new = torch.zeros([4*length-3*keep_len - 3, dim], dtype=model.dtype)
     for i in range(keep_len):
         posisitonal_embedding_new[i] = positional_embedding_pre[i]
     for i in range(length-1-keep_len):
@@ -241,9 +241,6 @@ def load_from_clip(name: str, device: Union[str, torch.device] = "cuda" if torch
         posisitonal_embedding_new[4*i + 3+keep_len] = 1*positional_embedding_pre[i+keep_len]/4 + 3*positional_embedding_pre[i+1+keep_len]/4
 
     posisitonal_embedding_new[4*length -3*keep_len - 4] = positional_embedding_pre[length-1] + 0*(positional_embedding_pre[length-1] - positional_embedding_pre[length-2])/4
-    posisitonal_embedding_new[4*length -3*keep_len - 3] = positional_embedding_pre[length-1] + 1*(positional_embedding_pre[length-1] - positional_embedding_pre[length-2])/4
-    posisitonal_embedding_new[4*length -3*keep_len - 2] = positional_embedding_pre[length-1] + 2*(positional_embedding_pre[length-1] - positional_embedding_pre[length-2])/4
-    posisitonal_embedding_new[4*length -3*keep_len - 1] = positional_embedding_pre[length-1] + 3*(positional_embedding_pre[length-1] - positional_embedding_pre[length-2])/4
             
     positional_embedding_res = posisitonal_embedding_new.clone()
             
