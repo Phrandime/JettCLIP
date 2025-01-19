@@ -356,15 +356,16 @@ class TransformerEncoder(nn.Module):
         ffn_dropout: Optional[float] = 0.0,
         transformer_norm_layer: Optional[str] = "layer_norm",
         stochastic_dropout: Optional[float] = 0.0,
+        flash_attn: Optional[bool] = False,
         *args,
         **kwargs,
     ) -> None:
 
         super().__init__()
-        self.mha_type = 1
+        self.mha_type = 1 if not flash_attn else 0
 
         # Build attention layer
-        if self.mha_type==1:
+        if self.mha_type == 1:
             attn_unit = MultiHeadAttention(
                 embed_dim,
                 num_heads,

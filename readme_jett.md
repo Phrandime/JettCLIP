@@ -25,8 +25,33 @@ conda activate clipenv
 pip install -r requirements.txt
 ```
 
-To download our pretrained checkpoints, please download in [JettCLIP](www.baidu.com) and put it in checkpoints/ .
+### Usage Example
+To models from the official repo, follow the code snippet below
+```python
+from model import longclip
+import torch
+from PIL import Image
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model, preprocess = longclip.load("/path/to/jett_s0.pt", device=device)
+
+text = longclip.tokenize(["A man is crossing the street with a red car parked nearby.", "A man is driving a car in an urban scene."]).to(device)
+image = preprocess(Image.open("./img/demo.png")).unsqueeze(0).to(device)
+
+with torch.no_grad():
+    image_features = model.encode_image(image)
+    text_features = model.encode_text(text)
+    
+    logits_per_image = image_features @ text_features.T
+    probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+
+print("Label probs:", probs) 
+
+```
 
 ### Evaluation
+Please find the detailed evaluation results [here](./results).
+
+To reproduce results, please download our pretrained checkpoints, please download in [JettCLIP](www.baidu.com) and put it in `checkpoints/`. We provide code to perform zero-shot classification evaluation on cifar-10/cifar-100 dataset and retrieval evaluation on Urban1k dataset, please refer to `eval/`.
 
 

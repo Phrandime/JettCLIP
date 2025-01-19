@@ -64,10 +64,15 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
     """
     
     model_path = name
-    if "jett" in name:
-        state_dict = {"jett":True}
-    else:
+    # if "jett" in name:
+    #     state_dict = {"jett":True}
+    # else:
+    #     state_dict = torch.load(model_path, map_location="cpu")
+    try:
         state_dict = torch.load(model_path, map_location="cpu")
+    except:
+        if 'jett' in name:
+            state_dict = {"jett":True}
     print("walk in longclip load")
     try:
         model = build_model(state_dict or model.state_dict(), load_from_clip = False).to(device)

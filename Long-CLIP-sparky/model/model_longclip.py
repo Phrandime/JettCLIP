@@ -680,7 +680,7 @@ def build_model(state_dict: dict=None, load_from_clip: bool=True):
             if "text_encoder.positional_embedding.pos_embed.pos_embed" in state_dict:
                 pretrained_state_dict_wo['text_encoder.positional_embedding'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
                 pretrained_state_dict_wo['text_encoder.positional_embedding_res'] = pretrained_state_dict['text_encoder.positional_embedding.pos_embed.pos_embed'].view(77,512)
-            else:             
+            else:       
                 model.text_encoder.positional_embedding = nn.Parameter(torch.empty(pretrained_state_dict_wo['text_encoder.positional_embedding'].shape))
                 model.text_encoder.positional_embedding_res = nn.Parameter(torch.empty(pretrained_state_dict_wo['text_encoder.positional_embedding'].shape))
             model.load_state_dict(pretrained_state_dict_wo)

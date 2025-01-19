@@ -590,6 +590,7 @@ class AttentionBlock(nn.Module):
         drop_path: float = 0.0,
         use_layer_scale: bool = True,
         layer_scale_init_value: float = 1e-5,
+        flash_attn: bool = False,
     ):
         """Build Attention Block.
 
@@ -606,7 +607,7 @@ class AttentionBlock(nn.Module):
 
         super().__init__()
         
-        self.attn_type = 1
+        self.attn_type = 1 if not flash_attn else 0
 
         self.norm = norm_layer(dim)
         # print(dim)

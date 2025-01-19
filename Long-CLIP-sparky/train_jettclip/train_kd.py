@@ -28,6 +28,8 @@ from torch.cuda.amp import GradScaler
 # import warnings
 # warnings.filterwarnings("ignore")
 from datetime import datetime
+np.random.seed(0)
+torch.manual_seed(0)
 
 
 class CLIP_Clean_Train():
@@ -160,11 +162,11 @@ class CLIP_Clean_Train():
                 
                 # 总损失
                 # TODO: 修改系数
-                # loss = 0.8*loss_long + 0.4*loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
+                loss = 0.8*loss_long + 0.4*loss_short + distill_loss_long * 1.5 + distill_loss_short * 0.5
                 # loss = distill_loss_long * 1.5 + distill_loss_short * 0.5
                 # loss = loss_long + loss_short
                 # loss = loss_long + loss_short + distill_loss_long + distill_loss_short
-                loss = distill_loss_long + distill_loss_short
+                # loss = distill_loss_long + distill_loss_short
 
                 '''
                 for key, val in teacher_features.items():
@@ -290,7 +292,7 @@ if __name__ == "__main__":
         "--batch-size", type=int, default=256, help="Batch size per gpu."#112
     )
     parser.add_argument(
-        "--epochs", type=int, default=4, help="Number of epochs to train for."
+        "--epochs", type=int, default=10, help="Number of epochs to train for."
     )
     parser.add_argument(
         "--resume",
