@@ -77,7 +77,7 @@ python -m eval.classification.cifar100 # for classification
 
 To run the training code for Jett-CLIP, please follow the following step, take mobileclip-s0 for example.
 
-### 1. Prepare MobileCLIP Model
+#### 1. Prepare MobileCLIP Model
 First, download the checkpoints of MobileCLIP-s0. You can refer to this page https://github.com/apple/ml-mobileclip.
 
 Then, you can load the model from MobileCLIP by running the following command. The positional embedding will be stretched from 77 to 248. 
@@ -88,7 +88,7 @@ model, preprocess = longclip.load_from_clip(model_name, device='cpu')
 ```
 *Note: Due to the different usage of positional encoding in MobileCLIP compared to this model, it is normal to observe degraded performance after loading the model parameters.*
 
-### 2. Prepare COCO and LLAVA dataset
+#### 2. Prepare COCO and LLAVA dataset
 
 First, download all images we used.
 - LAION-CC-SBU-558K: [images.zip](https://huggingface.co/datasets/liuhaotian/LLaVA-Pretrain/blob/main/images.zip)
@@ -112,7 +112,7 @@ ShareGPT4V
 ├── ...
 ```
 
-### 3. Finetune
+#### 3. Finetune
 
 Finally, you can run the `train_kd.py` for fine-tuning. Or start it from train.sh. The code will store every 500 steps, and you can also find the performance improvement through tensorboard logfile at `longclip/`.
 
