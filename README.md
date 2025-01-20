@@ -58,7 +58,7 @@ print("Label probs:", probs)
 ```
 
 ### Evaluation
-Please find the detailed evaluation results [here](./results).
+Please find the detailed evaluation results in our report.
 
 To reproduce results, please download our pretrained checkpoints in [JettCLIP](https://disk.pku.edu.cn/link/AA49DEF1014F764F29A11DB4E4EB158953) and put it in `checkpoints/`. We provide code to perform zero-shot classification evaluation on cifar-10/cifar-100 dataset and retrieval evaluation on COCO(download from [COCO](https://cocodataset.org/#download)) and Urban1k dataset(download from [Urban1k](https://huggingface.co/datasets/BeichenZhang/Urban1k/resolve/main/Urban1k.zip)), please refer to `eval/`.
 
