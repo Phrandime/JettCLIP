@@ -650,7 +650,7 @@ def build_model(state_dict: dict=None, load_from_clip: bool=True, reparameterize
         grid_size = round((state_dict["visual.positional_embedding"].shape[0] - 1) ** 0.5)
         image_resolution = vision_patch_size * grid_size
     elif ml or jett:
-        model_cfg_file = "./mobileclip_copy/configs/mobileclip_s0.json"
+        model_cfg_file = "model/mobileclip_copy/configs/mobileclip_s0.json"
         # Get config from yaml file
         if not os.path.exists(model_cfg_file):
             raise ValueError(f"mobile clip model config file path error")

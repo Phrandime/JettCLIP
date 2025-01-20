@@ -6,7 +6,7 @@ import torch.utils.data as data
 import os
 import pickle
 
-data4v_root = '../ShareGPT4V/data/'  # 'sharegpt4v/data/'
+data4v_root = 'ShareGPT4V/data/'  # 'sharegpt4v/data/'
 json_name = 'captions.json'
 tf_name = 'features.pkl'  # teacher_features
 
