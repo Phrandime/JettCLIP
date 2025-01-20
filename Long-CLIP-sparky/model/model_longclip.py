@@ -20,6 +20,8 @@ from model.mobileclip_copy.text_encoder import (
 )
 from PIL import Image
 from model.mobileclip_copy.image_encoder import MCi
+from model.mobileclip_copy.modules.common.mobileone import reparameterize_model
+
 try:
     from torchvision.transforms import InterpolationMode
     BICUBIC = InterpolationMode.BICUBIC
@@ -385,10 +387,11 @@ class CLIP(nn.Module):
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_final(x).type(self.dtype)
-
+        # return x
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+        # token_emb = token_emb[torch.arange(text_tokens.shape[0]), text_tokens.argmax(dim=-1)] @ self.projection_layer
 
         return x
 
@@ -635,7 +638,7 @@ def convert_weights(model: nn.Module):
     model.apply(_convert_weights_to_fp16)
 
 
-def build_model(state_dict: dict=None, load_from_clip: bool=True):
+def build_model(state_dict: dict=None, load_from_clip: bool=True, reparameterize=False):
     vit = "visual.proj" in state_dict
     ml = "logit_scale" in state_dict
     jett = "jett" in state_dict
@@ -686,6 +689,8 @@ def build_model(state_dict: dict=None, load_from_clip: bool=True):
             model.load_state_dict(pretrained_state_dict_wo)
             # import ipdb;ipdb.set_trace()
             # model.load_state_dict(state_dict)
+        if reparameterize:
+            model = reparameterize_model(model)
         return model, preprocess
     else:
         counts: list = [len(set(k.split(".")[2] for k in state_dict if k.startswith(f"visual.layer{b}"))) for b in [1, 2, 3, 4]]

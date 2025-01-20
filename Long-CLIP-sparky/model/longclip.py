@@ -43,7 +43,7 @@ def _transform(n_px):
 
 
 
-def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", download_root: str = None):
+def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", download_root: str = None, reparameterize = False):
     """Load a long CLIP model
 
     Parameters
@@ -75,9 +75,9 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
             state_dict = {"jett":True}
     print("walk in longclip load")
     try:
-        model = build_model(state_dict or model.state_dict(), load_from_clip = False).to(device)
+        model = build_model(state_dict or model.state_dict(), load_from_clip = False, reparameterize=reparameterize).to(device)
     except:
-        model, transform = build_model(state_dict, load_from_clip = False)
+        model, transform = build_model(state_dict, load_from_clip = False, reparameterize=reparameterize)
         model = model.to(device)
     # import ipdb;ipdb.set_trace()
     if str(device) == "cpu":
