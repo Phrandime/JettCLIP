@@ -60,32 +60,19 @@ if __name__ == '__main__':
     correct = 0
     total = 0
     
-    text_time = 0
-    image_time_list = []
-    
     with torch.no_grad():
         for i, (image, caption) in enumerate(dataset):
             text_list.append(caption)
 
         text_feature = tokenizer(text_list, truncate=True).to(device)
-        start_time = time.time()
-        for j in range(20):
-            text_feature1 = model.encode_text(text_feature)
-        end_time = time.time()
-        text_feature = text_feature1
-        text_time = end_time - start_time
+        text_feature = model.encode_text(text_feature)
         text_feature /= text_feature.norm(dim=-1, keepdim=True)
         
         for i, (image, caption) in enumerate(dataset):            
             image = preprocess(image).unsqueeze(0).to(device)
-            start_time = time.time()
             img_feature = model.encode_image(image)
-            end_time = time.time()
-            image_time_list.append(end_time - start_time)
             img_feature_list.append(img_feature)
-            
-        print(f"text encoder latency: {text_time}, image encoder latency: {sum(image_time_list[10:])/len(image_time_list[10:])}")
-            
+
         image_embeds = torch.cat(img_feature_list, dim=0)
         image_embeds /= image_embeds.norm(dim=-1, keepdim=True)
         

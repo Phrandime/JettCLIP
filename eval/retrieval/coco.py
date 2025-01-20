@@ -4,13 +4,22 @@ from model import longclip
 import torch
 from torchvision.datasets import CocoCaptions
 from PIL import Image
+import mobileclip
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model, preprocess = longclip.load("checkpoints/longclip-B.pt", device=device)
+model_name = "/path/to/jett_s0.pt"
+model_type = ['longCLIP', 'mobileclip_s0'][0]
+
+if model_type == "longCLIP":
+    model, preprocess = longclip.load(model_name, device=device)
+    tokenizer = longclip.tokenize
+elif model_type[:10] == "mobileclip":
+    model, _, preprocess = mobileclip.create_model_and_transforms(model_type, pretrained=model_name, reparameterize=True, device=device)
+    tokenizer = mobileclip.get_tokenizer(model_type)
 
 model.eval()
 
-coco = CocoCaptions(root="../Long-CLIP/ShareGPT4V/data/coco/val2017/", annFile="../Long-CLIP/ShareGPT4V/data/coco/annotations/captions_val2017.json", transform=None)
+coco = CocoCaptions(root="ShareGPT4V/data/coco/val2017/", annFile="ShareGPT4V/data/coco/annotations/captions_val2017.json", transform=None)
 
 image_features = []
 text_features = []

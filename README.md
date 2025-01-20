@@ -25,6 +25,13 @@ export PYTHONPATH=$PYTHONPATH:/path/to/Jett-CLIP
 
 ```
 
+Installing mobileclip is recommended
+```bash
+git clone https://github.com/apple/ml-mobileclip.git
+cd ml-mobileclip
+pip install -e .
+```
+
 ### Usage Example
 To models from the official repo, follow the code snippet below
 ```python
@@ -52,7 +59,7 @@ print("Label probs:", probs)
 ### Evaluation
 Please find the detailed evaluation results [here](./results).
 
-To reproduce results, please download our pretrained checkpoints in [JettCLIP](https://disk.pku.edu.cn/link/AA49DEF1014F764F29A11DB4E4EB158953) and put it in `checkpoints/`. We provide code to perform zero-shot classification evaluation on cifar-10/cifar-100 dataset and retrieval evaluation on Urban1k dataset(download from [Urban1k](https://huggingface.co/datasets/BeichenZhang/Urban1k/resolve/main/Urban1k.zip)), please refer to `eval/`.
+To reproduce results, please download our pretrained checkpoints in [JettCLIP](https://disk.pku.edu.cn/link/AA49DEF1014F764F29A11DB4E4EB158953) and put it in `checkpoints/`. We provide code to perform zero-shot classification evaluation on cifar-10/cifar-100 dataset and retrieval evaluation on COCO(download from [COCO](https://cocodataset.org/#download)) and Urban1k dataset(download from [Urban1k](https://huggingface.co/datasets/BeichenZhang/Urban1k/resolve/main/Urban1k.zip)), please refer to `eval/`.
 
 Organize the data as follows in `/ShareGPT4V/data`:
 ```none
@@ -62,13 +69,18 @@ ShareGPT4V
 │   ├── Urban1k
 │   │   ├── caption
 │   │   ├── image
+│   ├── coco
+│   │   ├── train2017
+│   │   ├── val2017
+│   │   ├── annotations
 ├── ...
 ```
 
 After getting data ready, run:
 ```bash
 # pay attention to checkpoint path
-python -m eval.retrieval.Urban1k # for long text retrieval, 
+python -m eval.retrieval.Urban1k # for long text retrieval
+python -m eval.retrieval.coco # for short text retrieval
 python -m eval.classification.cifar10 
 python -m eval.classification.cifar100 # for classification
 ```
@@ -118,4 +130,9 @@ Finally, you can run the `train_kd.py` for fine-tuning. Or start it from train.s
 
 ```bash
 bash train_jettclip/train.sh
+```
+
+If you want to train from stratch, please run:
+```bash
+python train_jettclip/train_kd.py --base_model "jett" # not recommend
 ```
