@@ -3,7 +3,6 @@ import torch
 import sys
 sys.path.append("..")
 
-from train.utils import is_dist_avail_and_initialized, accuracy
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
