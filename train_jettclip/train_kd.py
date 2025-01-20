@@ -8,13 +8,11 @@ import torch.nn.functional as F
 import torch.distributed as dist
 from tqdm import tqdm
 
-
 from sharegpt4v_kd import share4v_kd_train_dataset
 from loss import DistillClipLoss
 from model import longclip
 
 from torch.utils.data.distributed import DistributedSampler
-from train.scheduler import cosine_lr
 import argparse
 import os
 import subprocess
@@ -276,6 +274,25 @@ def setup_distributed(backend="nccl", port=None):
     )
     torch.cuda.set_device(device=f'cuda:{rank % num_gpus}')
     return rank, rank % num_gpus, world_size
+
+def assign_learning_rate(optimizer, new_lr):
+   for param_group in optimizer.param_groups:
+        param_group["lr"] = new_lr
+       
+def _warmup_lr(base_lr, warmup_length, step):
+    return base_lr * (step + 1) / warmup_length
+
+def cosine_lr(optimizer, base_lr, warmup_length, steps):
+    def _lr_adjuster(step):
+        if step < warmup_length:
+            lr = _warmup_lr(base_lr, warmup_length, step)
+        else:
+            e = step - warmup_length
+            es = steps - warmup_length
+            lr = 0.5 * (1 + np.cos(np.pi * e / es)) * base_lr
+        assign_learning_rate(optimizer, lr)
+        return lr
+    return _lr_adjuster
 
 
 if __name__ == "__main__":
