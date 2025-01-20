@@ -6,6 +6,7 @@
 The name "Jett" refer to cartoon Super Wings, where the main character is Jett, and Chinese name is "乐迪".
 
 - **Update 2025/1/20:** Releasing our code.
+- **Update 2025/1/20:** Our pretrained checkpoints can be find in [JettCLIP](https://disk.pku.edu.cn/link/AA49DEF1014F764F29A11DB4E4EB158953)
 
 ### Highlights
 * `JettCLIP` is a variant of `MobileCLIP` and `LongCLIP`, which obtains better long text ability than MobileCLIP and is faster than LongCLIP.
